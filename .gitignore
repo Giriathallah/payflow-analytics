@@ -5,6 +5,8 @@
 *.pem
 *.key
 
+fase/*
+
 # Preserve .env.example
 !.env.example
 
