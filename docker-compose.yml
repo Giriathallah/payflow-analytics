@@ -27,7 +27,7 @@ services:
     profiles: [ core ]
     networks: [ payflow ]
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5434}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: postgres
@@ -180,7 +180,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST}:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_APP_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_APP_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
@@ -342,7 +342,7 @@ services:
     profiles: [ tools ]
     networks: [ payflow ]
     ports:
-      - "9000-kui:8080"
+      - "9080:8080"
     depends_on:
       kafka:
         condition: service_healthy
@@ -359,7 +359,7 @@ services:
   dbt:
     image: ghcr.io/dbt-labs/dbt-clickhouse:1.8.0
     container_name: payflow-dbt
-    profiles: [ "" ]
+    profiles: [ dbt ]
     networks: [ payflow ]
     depends_on:
       clickhouse:
