@@ -1,0 +1,88 @@
+# ───────── Environment & Secrets ─────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Preserve .env.example
+!.env.example
+
+# ───────── Java & Maven (payment-generator) ─────────
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# ───────── dbt (payflow_analytics) ─────────
+dbt_packages/
+**/dbt_packages/
+dbt_modules/
+**/dbt_modules/
+**/target/
+**/logs/
+.user.yml
+
+# ───────── Python & Virtual Environments ─────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+
+# ───────── IDEs & Code Editors ─────────
+# JetBrains (IntelliJ IDEA, WebStorm, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Eclipse & NetBeans
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+nbproject/
+build/
+
+# ───────── OS & System Files ─────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ───────── Logs, Temp, and Runtime Data ─────────
+*.log
+logs/
+*.tmp
+*.temp
+tmp/
+temp/

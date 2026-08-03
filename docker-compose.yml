@@ -1,0 +1,375 @@
+name: payflow-analytics
+
+networks:
+  payflow:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  kafka-data:
+  clickhouse-data:
+  clickhouse-logs:
+  superset-data:
+  superset-db-data:
+  grafana-data:
+  prometheus-data:
+  kafka-connect-data:
+
+services:
+  # ═══════════════════════════════════════════
+  # PROFILE: core
+  # ═══════════════════════════════════════════
+
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
+    container_name: payflow-postgres
+    restart: unless-stopped
+    profiles: [ core ]
+    networks: [ payflow ]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      POSTGRES_DEBEZIUM_USER: ${POSTGRES_DEBEZIUM_USER}
+      POSTGRES_DEBEZIUM_PASSWORD: ${POSTGRES_DEBEZIUM_PASSWORD}
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "track_io_timing=on"
+      - "-c"
+      - "track_activities=on"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./infrastructure/postgres/config:/etc/postgresql/config:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION}
+    container_name: payflow-kafka
+    restart: unless-stopped
+    profiles: [ core ]
+    networks: [ payflow ]
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: kafka
+      CLUSTER_ID: "payflow-kafka-cluster-001"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  kafka-connect:
+    image: debezium/connect:${DEBEZIUM_VERSION}
+    container_name: payflow-kafka-connect
+    restart: unless-stopped
+    profiles: [ core ]
+    networks: [ payflow ]
+    ports:
+      - "8083:8083"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: payflow-connect-cluster
+      CONFIG_STORAGE_TOPIC: payflow_connect_configs
+      OFFSET_STORAGE_TOPIC: payflow_connect_offsets
+      STATUS_STORAGE_TOPIC: payflow_connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      PLUGIN_PATH: /kafka/connect
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_LOG4J_LOGGERS: "org.apache.kafka.connect.runtime.rest=WARN,org.reflections=ERROR"
+      JMX_PORT: 9102
+      KAFKA_JMX_HOSTNAME: kafka-connect
+    volumes:
+      - kafka-connect-data:/kafka/connect-external
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8083/connector-plugins" ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
+    container_name: payflow-clickhouse
+    restart: unless-stopped
+    profiles: [ core ]
+    networks: [ payflow ]
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB_RAW}
+      CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+      - ./infrastructure/clickhouse/users:/etc/clickhouse-server/users.d:ro
+      - ./infrastructure/clickhouse/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8123/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  payment-generator:
+    build:
+      context: ./apps/payment-generator
+      dockerfile: Dockerfile
+    container_name: payflow-generator
+    restart: unless-stopped
+    profiles: [ core ]
+    networks: [ payflow ]
+    ports:
+      - "${GENERATOR_SERVER_PORT}:8080"
+      - "${GENERATOR_MANAGEMENT_PORT}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_APP_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+      SERVER_PORT: 8080
+      MANAGEMENT_SERVER_PORT: 8081
+      SIMULATION_ENABLED: "true"
+
+  # ═══════════════════════════════════════════
+  # PROFILE: bi
+  # ═══════════════════════════════════════════
+
+  superset-db:
+    image: postgres:16-alpine
+    container_name: payflow-superset-db
+    restart: unless-stopped
+    profiles: [ bi ]
+    networks: [ payflow ]
+    environment:
+      POSTGRES_DB: ${SUPERSET_METADATA_DB_NAME}
+      POSTGRES_USER: ${SUPERSET_METADATA_DB_USER}
+      POSTGRES_PASSWORD: ${SUPERSET_METADATA_DB_PASSWORD}
+    volumes:
+      - superset-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${SUPERSET_METADATA_DB_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  superset:
+    image: apache/superset:${SUPERSET_VERSION}
+    container_name: payflow-superset
+    restart: unless-stopped
+    profiles: [ bi ]
+    networks: [ payflow ]
+    ports:
+      - "8088:8088"
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_HOME: /app/superset_home
+      DATABASE_URI: postgresql+psycopg2://${SUPERSET_METADATA_DB_USER}:${SUPERSET_METADATA_DB_PASSWORD}@superset-db:5432/${SUPERSET_METADATA_DB_NAME}
+      PYTHONPATH: /app/pythonpath
+    volumes:
+      - superset-data:/app/superset_home
+      - ./infrastructure/superset/config:/app/pythonpath:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        superset db upgrade &&
+        superset fab create-admin --username admin --firstname Admin --lastname User --email admin@payflow.local --password admin || true &&
+        superset init &&
+        /usr/bin/run-server.sh
+
+  # ═══════════════════════════════════════════
+  # PROFILE: monitoring
+  # ═══════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION}
+    container_name: payflow-prometheus
+    restart: unless-stopped
+    profiles: [ monitoring ]
+    networks: [ payflow ]
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION}
+    container_name: payflow-grafana
+    restart: unless-stopped
+    profiles: [ monitoring ]
+    networks: [ payflow ]
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: payflow-postgres-exporter
+    restart: unless-stopped
+    profiles: [ monitoring ]
+    networks: [ payflow ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "false"
+      PG_EXPORTER_DISABLE_DEFAULT_METRICS: "false"
+    ports:
+      - "9187:9187"
+
+  kafka-exporter:
+    image: danielqsj/kafka_exporter:latest
+    container_name: payflow-kafka-exporter
+    restart: unless-stopped
+    profiles: [ monitoring ]
+    networks: [ payflow ]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - "--kafka.server=kafka:9092"
+      - "--web.listen-address=:9308"
+    ports:
+      - "9308:9308"
+
+  clickhouse-exporter:
+    image: f1yegor/clickhouse-exporter:latest
+    container_name: payflow-clickhouse-exporter
+    restart: unless-stopped
+    profiles: [ monitoring ]
+    networks: [ payflow ]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
+    command:
+      - "--clickhouse.url=http://clickhouse:8123/"
+    ports:
+      - "9116:9116"
+
+  # ═══════════════════════════════════════════
+  # PROFILE: tools
+  # ═══════════════════════════════════════════
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: payflow-kafka-ui
+    restart: unless-stopped
+    profiles: [ tools ]
+    networks: [ payflow ]
+    ports:
+      - "9000-kui:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: payflow
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: payflow-connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+
+  # ═══════════════════════════════════════════
+  # dbt (one-off container)
+  # ═══════════════════════════════════════════
+
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-clickhouse:1.8.0
+    container_name: payflow-dbt
+    profiles: [ "" ]
+    networks: [ payflow ]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    working_dir: /usr/app
+    volumes:
+      - ./dbt/payflow_analytics:/usr/app
+    environment:
+      DBT_CLICKHOUSE_HOST: ${CLICKHOUSE_HOST}
+      DBT_CLICKHOUSE_PORT: ${CLICKHOUSE_HTTP_PORT}
+      DBT_CLICKHOUSE_USER: ${DBT_CLICKHOUSE_USER}
+      DBT_CLICKHOUSE_PASSWORD: ${DBT_CLICKHOUSE_PASSWORD}
+    entrypoint: [ "dbt" ]
