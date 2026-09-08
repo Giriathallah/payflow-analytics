@@ -1,0 +1,213 @@
+version: 2
+
+models:
+  # Staging Layer
+  - name: stg_merchants
+    description: "Staging model for merchants data cleaned from ClickHouse core layer"
+    columns:
+      - name: merchant_id
+        description: "Primary key for merchant"
+        tests:
+          - unique
+          - not_null
+      - name: merchant_name
+        description: "Merchant display name"
+        tests:
+          - not_null
+
+  - name: stg_payment_methods
+    description: "Staging model for payment methods available in the gateway"
+    columns:
+      - name: payment_method_id
+        description: "Primary key for payment method"
+        tests:
+          - unique
+          - not_null
+      - name: payment_method_code
+        description: "Unique code representing payment method (e.g. BCA_VA, GOPAY)"
+        tests:
+          - not_null
+
+  - name: stg_payments
+    description: "Staging model for transaction payments"
+    columns:
+      - name: payment_id
+        description: "Primary key for payment"
+        tests:
+          - unique
+          - not_null
+      - name: merchant_id
+        description: "Foreign key referencing merchant"
+        tests:
+          - not_null
+      - name: payment_method_id
+        description: "Foreign key referencing payment method"
+        tests:
+          - not_null
+      - name: status
+        description: "Current lifecycle status of the payment"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['INITIATED', 'AUTHORIZED', 'CAPTURED', 'SETTLED', 'FAILED', 'EXPIRED', 'REFUNDED', 'REFUND_FAILED']
+      - name: amount
+        description: "Gross payment amount in IDR"
+        tests:
+          - not_null
+
+  - name: stg_payment_status_events
+    description: "Append-only payment status transition events log"
+    columns:
+      - name: event_id
+        description: "Primary key for status transition event"
+        tests:
+          - unique
+          - not_null
+      - name: payment_id
+        description: "Associated payment ID"
+        tests:
+          - not_null
+      - name: to_status
+        description: "Target status of transition"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['INITIATED', 'AUTHORIZED', 'CAPTURED', 'SETTLED', 'FAILED', 'EXPIRED', 'REFUNDED', 'REFUND_FAILED']
+
+  - name: stg_refunds
+    description: "Staging model for refund transactions"
+    columns:
+      - name: refund_id
+        description: "Primary key for refund"
+        tests:
+          - unique
+          - not_null
+      - name: payment_id
+        description: "Associated payment ID"
+        tests:
+          - not_null
+      - name: refund_status
+        description: "Status of refund processing"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['REQUESTED', 'PROCESSING', 'COMPLETED', 'FAILED']
+
+  - name: stg_settlement_batches
+    description: "Staging model for settlement batch headers"
+    columns:
+      - name: batch_id
+        description: "Primary key for settlement batch"
+        tests:
+          - unique
+          - not_null
+      - name: merchant_id
+        description: "Merchant receiving the settlement batch"
+        tests:
+          - not_null
+
+  - name: stg_settlement_items
+    description: "Staging model for settlement batch items detailing each payment reconciliation"
+    columns:
+      - name: item_id
+        description: "Primary key for settlement item"
+        tests:
+          - unique
+          - not_null
+      - name: settlement_batch_id
+        description: "Foreign key referencing settlement batch"
+        tests:
+          - not_null
+      - name: payment_id
+        description: "Foreign key referencing payment"
+        tests:
+          - not_null
+      - name: reconciliation_status
+        description: "Reconciliation result status"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['MATCHED', 'AMOUNT_MISMATCH', 'MISSING', 'DUPLICATE']
+
+  # Intermediate Layer
+  - name: int_payment_lifecycle
+    description: "Calculates lifecycle stage durations in milliseconds for each payment"
+    columns:
+      - name: payment_id
+        description: "Primary key for payment lifecycle"
+        tests:
+          - unique
+          - not_null
+
+  - name: int_payment_financials
+    description: "Combines gross, fee, refund, and net amounts per payment"
+    columns:
+      - name: payment_id
+        description: "Primary key for payment financials"
+        tests:
+          - unique
+          - not_null
+
+  - name: int_merchant_daily_payments
+    description: "Daily aggregated metrics of payments per merchant"
+    columns:
+      - name: payment_date
+        tests:
+          - not_null
+      - name: merchant_id
+        tests:
+          - not_null
+
+  - name: int_settlement_matching
+    description: "Reconciliation comparison between expected and actual settlement item amounts"
+    columns:
+      - name: item_id
+        tests:
+          - unique
+          - not_null
+
+  # Marts Layer
+  - name: mart_payment_performance
+    description: "Hourly aggregated payment volume, success rate, and gross amounts"
+    columns:
+      - name: date
+        tests:
+          - not_null
+      - name: hour
+        tests:
+          - not_null
+
+  - name: mart_failure_analysis
+    description: "Analysis of payment failures broken down by date, method, provider, and failure reason"
+    columns:
+      - name: date
+        tests:
+          - not_null
+
+  - name: mart_payment_funnel
+    description: "Daily count of transactions passing through each status in the payment funnel"
+    columns:
+      - name: date
+        tests:
+          - not_null
+
+  - name: mart_merchant_daily_performance
+    description: "Daily merchant performance summary for executive and business analytics"
+    columns:
+      - name: date
+        tests:
+          - not_null
+      - name: merchant_id
+        tests:
+          - not_null
+
+  - name: mart_settlement_reconciliation
+    description: "Batch-level settlement reconciliation mart identifying matched and mismatch counts"
+    columns:
+      - name: batch_id
+        tests:
+          - unique
+          - not_null
+      - name: settlement_date
+        tests:
+          - not_null

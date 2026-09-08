@@ -1,0 +1,12 @@
+payflow_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      schema: payflow_mart
+      host: clickhouse
+      port: 8123
+      user: dbt_transformer
+      password: dbt_transformer_pass
+      secure: false
+      verify: false

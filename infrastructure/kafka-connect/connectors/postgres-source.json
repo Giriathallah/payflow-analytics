@@ -1,0 +1,30 @@
+{
+  "name": "payflow-postgres-source",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "payflow_debezium",
+    "database.password": "payflow_debezium_pass",
+    "database.dbname": "payflow",
+    "topic.prefix": "payflow",
+    "slot.name": "payflow_debezium_slot",
+    "publication.name": "payflow_publication",
+    "publication.autocreate.mode": "filtered",
+    "table.include.list": "public.merchants,public.payment_methods,public.payments,public.payment_status_history,public.refunds,public.settlement_batches,public.settlement_items",
+    "decimal.handling.mode": "double",
+    "time.precision.mode": "adaptive_time_microseconds",
+    "tombstones.on.delete": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,table,source.ts_ms",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}

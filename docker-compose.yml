@@ -88,7 +88,7 @@ services:
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: kafka
-      CLUSTER_ID: "payflow-kafka-cluster-001"
+      CLUSTER_ID: "4L6g3nShT_eMCtK__X86sw"
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
@@ -157,7 +157,7 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
-      - ./infrastructure/clickhouse/users:/etc/clickhouse-server/users.d:ro
+      - ./infrastructure/clickhouse/users:/etc/clickhouse-server/users.d
       - ./infrastructure/clickhouse/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8123/ping" ]
@@ -212,7 +212,9 @@ services:
       retries: 10
 
   superset:
-    image: apache/superset:${SUPERSET_VERSION}
+    build:
+      context: ./infrastructure/superset
+      dockerfile: Dockerfile
     container_name: payflow-superset
     restart: unless-stopped
     profiles: [ bi ]
@@ -222,8 +224,6 @@ services:
     depends_on:
       superset-db:
         condition: service_healthy
-      clickhouse:
-        condition: service_healthy
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
       SUPERSET_HOME: /app/superset_home
@@ -232,6 +232,7 @@ services:
     volumes:
       - superset-data:/app/superset_home
       - ./infrastructure/superset/config:/app/pythonpath:ro
+      - ./infrastructure/superset/init-superset.py:/app/init-superset.py:ro
     command:
       - /bin/sh
       - -c
@@ -289,9 +290,6 @@ services:
     restart: unless-stopped
     profiles: [ monitoring ]
     networks: [ payflow ]
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/${POSTGRES_DB}?sslmode=disable"
       PG_EXPORTER_AUTO_DISCOVER_DATABASES: "false"
@@ -305,9 +303,6 @@ services:
     restart: unless-stopped
     profiles: [ monitoring ]
     networks: [ payflow ]
-    depends_on:
-      kafka:
-        condition: service_healthy
     command:
       - "--kafka.server=kafka:9092"
       - "--web.listen-address=:9308"
@@ -320,9 +315,6 @@ services:
     restart: unless-stopped
     profiles: [ monitoring ]
     networks: [ payflow ]
-    depends_on:
-      clickhouse:
-        condition: service_healthy
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_ADMIN_USER}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD}
@@ -343,9 +335,6 @@ services:
     networks: [ payflow ]
     ports:
       - "9080:8080"
-    depends_on:
-      kafka:
-        condition: service_healthy
     environment:
       KAFKA_CLUSTERS_0_NAME: payflow
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -357,13 +346,12 @@ services:
   # ═══════════════════════════════════════════
 
   dbt:
-    image: ghcr.io/dbt-labs/dbt-clickhouse:1.8.0
+    build:
+      context: ./dbt
+      dockerfile: Dockerfile
     container_name: payflow-dbt
     profiles: [ dbt ]
     networks: [ payflow ]
-    depends_on:
-      clickhouse:
-        condition: service_healthy
     working_dir: /usr/app
     volumes:
       - ./dbt/payflow_analytics:/usr/app

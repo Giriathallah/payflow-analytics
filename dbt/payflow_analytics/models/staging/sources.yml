@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: payflow_core
+    database: payflow_core
+    tables:
+      - name: v_payments_latest
+        description: "Latest state view for payments using argMax aggregation"
+      - name: v_merchants_latest
+        description: "Latest state view for merchants"
+      - name: payment_methods_current
+        description: "Payment methods current state table"
+      - name: refunds_current
+        description: "Refunds current state table"
+      - name: settlement_batches_current
+        description: "Settlement batches current state table"
+      - name: settlement_items_current
+        description: "Settlement items current state table"
+      - name: fact_payment_status_events
+        description: "Append-only status transition events"
