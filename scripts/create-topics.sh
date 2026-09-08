@@ -1,17 +1,25 @@
 #!/bin/bash
 set -e
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 KAFKA_CONTAINER=${KAFKA_CONTAINER:-payflow-kafka}
 BOOTSTRAP_SERVER=${BOOTSTRAP_SERVER:-kafka:9092}
 
+TOPIC_PREFIX=${KAFKA_TOPIC_PREFIX:-payflow}
 TOPICS=(
-  "payflow.public.merchants"
-  "payflow.public.payment_methods"
-  "payflow.public.payments"
-  "payflow.public.payment_status_history"
-  "payflow.public.refunds"
-  "payflow.public.settlement_batches"
-  "payflow.public.settlement_items"
+  "${TOPIC_PREFIX}.public.merchants"
+  "${TOPIC_PREFIX}.public.payment_methods"
+  "${TOPIC_PREFIX}.public.payments"
+  "${TOPIC_PREFIX}.public.payment_status_history"
+  "${TOPIC_PREFIX}.public.refunds"
+  "${TOPIC_PREFIX}.public.settlement_batches"
+  "${TOPIC_PREFIX}.public.settlement_items"
 )
 
 echo "► Creating Kafka topics..."

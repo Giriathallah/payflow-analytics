@@ -16,7 +16,15 @@ with app.app_context():
     
     # 1. Register Database Connection
     db_name = "PayFlow ClickHouse Mart"
-    sqlalchemy_uri = "clickhousedb://superset_reader:superset_reader_pass@clickhouse:8123/payflow_mart"
+    sqlalchemy_uri = (
+        "clickhousedb://{user}:{password}@{host}:{port}/{database}".format(
+            user=os.environ.get("CLICKHOUSE_SUPERSET_USER", "superset_reader"),
+            password=os.environ["CLICKHOUSE_SUPERSET_PASSWORD"],
+            host=os.environ.get("CLICKHOUSE_HOST", "clickhouse"),
+            port=os.environ.get("CLICKHOUSE_HTTP_PORT", "8123"),
+            database=os.environ.get("CLICKHOUSE_DB_MART", "payflow_mart")
+        )
+    )
     
     database = db.session.query(Database).filter_by(database_name=db_name).first()
     if not database:

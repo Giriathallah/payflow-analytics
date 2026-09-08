@@ -96,39 +96,100 @@ payflow-analytics/
 
 ## 🚀 How to Run (Cara Running)
 
-### 1. Prepare Environment Variables
+From a fresh clone, run the following sequence. Docker Compose does not auto-create Kafka topics, so topic creation and connector registration are explicit steps.
 
-Copy `.env.example` to `.env` and fill in your desired environment variables:
+### 1. Clone and prepare environment
 
 ```bash
+git clone https://github.com/Giriathallah/payflow-analytics.git
+cd payflow-analytics
 cp .env.example .env
 ```
 
-### 2. Start Services with Docker Compose Profiles
+The example values are safe local-development credentials. Change them in `.env` for any shared or non-local environment.
 
-The services are split into Docker Compose profiles so you can run what you need:
+### 2. Start core services
 
-* **Core Services** (PostgreSQL, Kafka, Kafka Connect, ClickHouse, Payment Generator):
-  ```bash
-  docker compose --profile core up -d
-  ```
+```bash
+docker compose --profile core up -d
+```
 
-* **BI Dashboard** (Apache Superset):
-  ```bash
-  docker compose --profile bi up -d
-  ```
+Or use the equivalent Make target:
 
-* **Monitoring & Observability** (Prometheus & Grafana):
-  ```bash
-  docker compose --profile monitoring up -d
-  ```
+```bash
+make up-core
+```
 
-* **Developer Tools** (Kafka UI):
-  ```bash
-  docker compose --profile tools up -d
-  ```
+### 3. Create Kafka topics
 
----
+```bash
+make create-topics
+```
+
+### 4. Register Debezium connector
+
+```bash
+make register-connector
+```
+
+The registration script loads `.env` and renders the connector template, so PostgreSQL credentials and CDC naming stay consistent with the compose environment.
+
+### 5. Check health and pipeline
+
+```bash
+make health
+make check-pipeline
+```
+
+### 6. Start the payment generator
+
+```bash
+make gen-start
+```
+
+### 7. Verify events and OLAP data
+
+```bash
+make consume-topic TOPIC=payflow.public.payments
+make ch-query Q="SELECT count() FROM payflow_raw.payment_cdc_events"
+```
+
+Start optional profiles only when needed:
+
+```bash
+docker compose --profile bi up -d
+docker compose --profile monitoring up -d
+docker compose --profile tools up -d
+```
+
+### Fastest demo
+
+For a short interviewer demo:
+
+```bash
+make demo
+make consume-topic TOPIC=payflow.public.payments
+make ch-query Q="SELECT count() FROM payflow_raw.payment_cdc_events"
+```
+
+The `demo` target starts core services, creates topics, registers Debezium, starts simulation, and prints service health.
+
+## Project Status
+
+Portfolio / learning project implementing an end-to-end real-time payment analytics pipeline.
+
+Current scope:
+
+- Payment transaction simulation
+- PostgreSQL OLTP
+- Debezium CDC
+- Kafka streaming
+- ClickHouse OLAP
+- dbt transformation
+- Superset BI
+- Grafana/Prometheus monitoring
+
+Designed for local development and demonstration, not production deployment.
 
 ## 🎮 Simulator Control & Scenario API
 
@@ -176,6 +237,16 @@ curl -X POST "http://localhost:8080/api/scenarios/high-traffic?durationSeconds=6
 | **Prometheus** | `http://localhost:9090` | System & application metrics |
 
 ---
+
+## 🧪 Clean-room verification
+
+To repeat the setup from a clean local state:
+
+```bash
+docker compose --profile core --profile bi --profile monitoring --profile tools down -v
+```
+
+Then follow the setup sequence above from `cp .env.example .env` onward. The `-v` flag removes local Docker volumes and therefore deletes local demo data.
 
 ## 📜 License
 

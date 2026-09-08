@@ -5,6 +5,8 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 COMPOSE := docker compose
+-include .env
+export
 
 .PHONY: help
 
@@ -16,6 +18,8 @@ help: ## Show this help
 
 up-core: ## Start core services (postgres, kafka, connect, clickhouse, generator)
 	$(COMPOSE) --profile core up -d
+
+demo: up-core create-topics register-connector gen-start health ## Start the fastest end-to-end demo
 
 up-bi: ## Start BI stack (superset)
 	$(COMPOSE) --profile bi up -d
@@ -115,15 +119,15 @@ publications: ## Show publications
 # ─── ClickHouse ─────────────────────────────
 
 ch-client: ## Open clickhouse-client shell
-	docker exec -it payflow-clickhouse clickhouse-client --user clickhouse_admin --password clickhouse_admin_pass
+	docker exec -it payflow-clickhouse clickhouse-client --user $(CLICKHOUSE_ADMIN_USER) --password $(CLICKHOUSE_ADMIN_PASSWORD)
 
 ch-query: ## Run a query (make ch-query Q="SELECT count() FROM payflow_raw.payment_cdc_events")
-	docker exec payflow-clickhouse clickhouse-client --user clickhouse_admin --password clickhouse_admin_pass -q "$(Q)"
+	docker exec payflow-clickhouse clickhouse-client --user $(CLICKHOUSE_ADMIN_USER) --password $(CLICKHOUSE_ADMIN_PASSWORD) -q "$(Q)"
 
 ch-migrations: ## Run all ClickHouse migrations manually
 	@for f in infrastructure/clickhouse/migrations/*.sql; do \
 	    echo "▶ Running $$f"; \
-	    docker exec -i payflow-clickhouse clickhouse-client --user clickhouse_admin --password clickhouse_admin_pass < $$f; \
+	    docker exec -i payflow-clickhouse clickhouse-client --user $(CLICKHOUSE_ADMIN_USER) --password $(CLICKHOUSE_ADMIN_PASSWORD) < $$f; \
 	done
 
 # ─── dbt ────────────────────────────────────
@@ -187,7 +191,7 @@ health: ## Show health of all services
 	@echo "Kafka:"; docker exec payflow-kafka kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1 && echo "✅ ok" || echo "❌ down"
 	@echo "Kafka Connect:"; curl -sf http://localhost:8083/ >/dev/null && echo "✅ ok" || echo "❌ down"
 	@echo "ClickHouse:"; curl -sf http://localhost:8123/ping >/dev/null && echo "✅ ok" || echo "❌ down"
-	@echo "Generator:"; curl -sf http://localhost:8080/actuator/health >/dev/null 2>&1 && echo "✅ ok" || echo "❌ down"
+	@echo "Generator:"; curl -sf http://localhost:8081/actuator/health >/dev/null 2>&1 && echo "✅ ok" || echo "❌ down"
 	@echo "Prometheus:"; curl -sf http://localhost:9090/-/healthy >/dev/null && echo "✅ ok" || echo "❌ down"
 	@echo "Grafana:"; curl -sf http://localhost:3000/api/health >/dev/null && echo "✅ ok" || echo "❌ down"
 	@echo "Superset:"; curl -sf http://localhost:8088/health >/dev/null && echo "✅ ok" || echo "❌ down"
@@ -208,8 +212,8 @@ prune-images: ## Remove unused images
 shell-%: ## Open shell in service (make shell-clickhouse)
 	docker exec -it payflow-$* /bin/sh || docker exec -it payflow-$* /bin/bash
 
-env: ## Show .env loaded
+env: ## Create .env from the example when it does not exist
 	@test -f .env && echo ".env exists" || (cp .env.example .env && echo "✅ .env created from .env.example")
 
-init: env ## Initialize project: create .env and scaffold
-	@test -d apps/payment-generator/src && echo "✅ Already scaffolded" || ./scripts/scaffold.sh
+init: env ## Initialize project: create .env
+	@echo "✅ Environment initialized. Run: make up-core create-topics register-connector"

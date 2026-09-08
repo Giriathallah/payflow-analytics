@@ -14,14 +14,5 @@
       <quota>default</quota>
       <access_management>1</access_management>
     </clickhouse_admin>
-
-    <superset_reader>
-      <profile>default</profile>
-      <networks>
-        <ip>::/0</ip>
-      </networks>
-      <password><![CDATA[superset_reader_pass]]></password>
-      <quota>default</quota>
-    </superset_reader>
   </users>
 </clickhouse>

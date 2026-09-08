@@ -1,7 +1,7 @@
 -- ============================================================
 -- Superset Dashboard 1: Executive Overview Queries
 -- Database: payflow_mart
--- Connection: clickhousedb://superset_reader:superset_reader_pass@clickhouse:8123/payflow_mart
+-- Connection configured through CLICKHOUSE_* environment variables
 -- ============================================================
 
 -- 1. KPI: Total Payment Volume (IDR)
